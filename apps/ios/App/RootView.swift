@@ -76,30 +76,36 @@ struct RootView: View {
             else if phase == .active { coordinator.resume(); Task { await HostedCloseRecovery.shared.resume(); await AppleMinutePurchases.shared.checkPurchases() } }
         }
         #if DEBUG
-        .task {
-            #if targetEnvironment(simulator)
-            if ProcessInfo.processInfo.arguments.contains("--preview-onboarding") {
-                coordinator.store.updatePreferences { $0.hasOnboarded = false }
-            }
-            if ProcessInfo.processInfo.arguments.contains("--preview"), ProcessInfo.processInfo.arguments.contains("--preview-existing-user") {
-                coordinator.store.updatePreferences { $0.hasOnboarded = true }
-            }
-            if let screen = ScreenshotPreview.screen { coordinator.prepareScreenshot(screen) }
-            coordinator.prepareTypedReplyPreview()
-            coordinator.prepareConversationPolicyPreview()
-            coordinator.prepareCaptionFollowingPreview()
-            if ProcessInfo.processInfo.arguments.contains("--verify-network-recovery") {
-                coordinator.notice = await LiveTransport.verifyRecoveryLifecycle() ? "Network recovery lifecycle passed" : "Network recovery lifecycle failed"
-                return
-            }
-            #endif
-            if AudioVerification.requested { await AudioVerification.run(coordinator) }
-            else if ProcessInfo.processInfo.arguments.contains("--ended-conversation") { coordinator.prepareConversationPreview(active: false) }
-            else if ProcessInfo.processInfo.arguments.contains("--active-conversation") { coordinator.prepareConversationPreview(active: true) }
-            if ProcessInfo.processInfo.arguments.contains("--preview-caption-following") { await coordinator.runCaptionFollowingPreview() }
-        }
+        .task { await runDebugTask() }
         #endif
     }
+    #if DEBUG
+    @MainActor
+    private func runDebugTask() async {
+        #if targetEnvironment(simulator)
+        if ProcessInfo.processInfo.arguments.contains("--preview-onboarding") {
+            coordinator.store.updatePreferences { $0.hasOnboarded = false }
+        }
+        if ProcessInfo.processInfo.arguments.contains("--preview"), ProcessInfo.processInfo.arguments.contains("--preview-existing-user") {
+            coordinator.store.updatePreferences { $0.hasOnboarded = true }
+        }
+        if let screen = ScreenshotPreview.screen { coordinator.prepareScreenshot(screen) }
+        coordinator.prepareTypedReplyPreview()
+        coordinator.prepareConversationPolicyPreview()
+        coordinator.prepareCaptionFollowingPreview()
+        if ProcessInfo.processInfo.arguments.contains("--verify-network-recovery") {
+            coordinator.notice = await LiveTransport.verifyRecoveryLifecycle() ? "Network recovery lifecycle passed" : "Network recovery lifecycle failed"
+            return
+        }
+        #endif
+        if AudioVerification.requested { await AudioVerification.run(coordinator) }
+        else if ProcessInfo.processInfo.arguments.contains("--ended-conversation") { coordinator.prepareConversationPreview(active: false) }
+        else if ProcessInfo.processInfo.arguments.contains("--active-conversation") { coordinator.prepareConversationPreview(active: true) }
+        #if targetEnvironment(simulator)
+        if ProcessInfo.processInfo.arguments.contains("--preview-caption-following") { await coordinator.runCaptionFollowingPreview() }
+        #endif
+    }
+    #endif
     private func shell<Content: View>(@ViewBuilder content: () -> Content) -> some View {
         NavigationStack {
             content().background(MuralColor.cream).toolbar {
