@@ -1,0 +1,71 @@
+
+name: Mural iOS - Build Validation
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-ios:
+    name: Validate Mural iOS
+    runs-on: macos-26
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Check Xcode environment
+        run: |
+          sw_vers
+          xcodebuild -version
+          swift --version
+
+      - name: Run Swift core tests
+        run: |
+          set -o pipefail
+          swift test --package-path apps/ios \
+            2>&1 | tee swift-tests.log
+
+      - name: Build iPhone app without signing
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project apps/ios/Mural.xcodeproj \
+            -scheme Mural \
+            -configuration Debug \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath "$RUNNER_TEMP/MuralBuild" \
+            CODE_SIGNING_ALLOWED=NO \
+            build 2>&1 | tee ios-build.log
+
+      - name: Package unsigned build
+        run: |
+          APP="$RUNNER_TEMP/MuralBuild/Build/Products/Debug-iphoneos/Mural.app"
+          test -d "$APP"
+          mkdir -p artifacts
+          ditto -c -k --keepParent "$APP" \
+            artifacts/Mural-unsigned-app.zip
+
+      - name: Upload build artifact
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mural-ios-unsigned
+          path: artifacts/Mural-unsigned-app.zip
+          retention-days: 7
+
+      - name: Upload validation logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mural-build-logs
+          path: |
+            swift-tests.log
+            ios-build.log
+          if-no-files-found: ignore
+          retention-days: 7
